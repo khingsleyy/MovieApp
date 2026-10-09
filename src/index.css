@@ -52,7 +52,7 @@
     }
 
     .main-area {
-        @apply flex flex-col w-[68%];
+        @apply flex flex-col w-full min-w-0;
     }
 
     .sidebar {
