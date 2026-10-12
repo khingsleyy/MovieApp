@@ -1,10 +1,33 @@
-export const API_BASE_URL = 'https://api.themoviedb.org/3';
+export const API_BASE_URL = '/api/tmdb';
 export const API_OPTIONS = {
     method: 'GET',
-    headers: {
-        accept: 'application/json',
-        Authorization: `Bearer ${import.meta.env.VITE_TMDB_API_KEY}`,
-    },
+    headers: { accept: 'application/json' },
+};
+
+const CACHE_TTL = 5 * 60 * 1000;
+const cache = new Map();
+
+const request = async (url, signal) => {
+    const res = await fetch(url, { ...API_OPTIONS, signal });
+    if (!res.ok) throw new Error(`TMDB request failed (${res.status})`);
+    return res.json();
+};
+
+// Cached GET. Identical requests within 5 minutes share one network call.
+// Pass { cache: false } for things like search, and { signal } to cancel uncached requests.
+export const tmdbGet = (path, { signal, cache: useCache = true } = {}) => {
+    const url = `${API_BASE_URL}${path}`;
+    if (!useCache) return request(url, signal);
+
+    const hit = cache.get(url);
+    if (hit && Date.now() - hit.time < CACHE_TTL) return hit.promise;
+
+    const promise = request(url).catch((error) => {
+        cache.delete(url);
+        throw error;
+    });
+    cache.set(url, { promise, time: Date.now() });
+    return promise;
 };
 
 const POP = 'sort_by=popularity.desc';
@@ -109,6 +132,7 @@ export const TV_GENRES = [
 
 // Works for normal categories ("anime") and genre keys ("genre-movie-27")
 export const getCategory = (key) => {
+    if (!key || typeof key !== 'string') return null;
     if (CATEGORIES[key]) return CATEGORIES[key];
 
     const match = key.match(/^genre-(movie|tv)-(\d+)$/);
@@ -127,12 +151,41 @@ export const getCategory = (key) => {
     };
 };
 
-export const fetchCategory = async (key, page = 1) => {
+export const SORT_OPTIONS = [
+    { value: 'popular', label: 'Most popular' },
+    { value: 'rating', label: 'Top rated' },
+    { value: 'newest', label: 'Newest' },
+];
+
+// sort and year only work on discover-based lists (trending and top-rated are fixed by TMDB)
+export const canFilter = (cfg) => !!cfg && cfg.path.startsWith('/discover');
+
+export const fetchCategory = async (key, page = 1, { sort = 'popular', year = '' } = {}) => {
     const c = getCategory(key);
     if (!c) throw new Error('Unknown category');
-    const url = `${API_BASE_URL}${c.path}?page=${page}${c.params ? `&${c.params}` : ''}`;
-    const res = await fetch(url, API_OPTIONS);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+
+    const params = new URLSearchParams(c.params || '');
+    params.set('page', String(page));
+
+    if (canFilter(c)) {
+        const isMovie = c.type === 'movie';
+        const dateField = isMovie ? 'primary_release_date' : 'first_air_date';
+        const today = new Date().toISOString().slice(0, 10);
+
+        if (sort === 'rating') {
+            params.set('sort_by', 'vote_average.desc');
+            params.set('vote_count.gte', '200');
+        } else if (sort === 'newest') {
+            params.set('sort_by', `${dateField}.desc`);
+            params.set(`${dateField}.lte`, today);
+            params.set('vote_count.gte', '5');
+        }
+
+        if (year) {
+            params.set(isMovie ? 'primary_release_year' : 'first_air_date_year', String(year));
+        }
+    }
+
+    const data = await tmdbGet(`${c.path}?${params.toString()}`);
     return { results: data.results || [], totalPages: data.total_pages || 1, type: c.type };
 };

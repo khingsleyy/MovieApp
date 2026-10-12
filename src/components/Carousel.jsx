@@ -5,19 +5,19 @@ const Arrow = ({ side, onClick }) => (
         type="button"
         onClick={onClick}
         aria-label={side === 'left' ? 'Scroll left' : 'Scroll right'}
-        className={`absolute top-0 bottom-0 z-10 w-12 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${side === 'left' ? 'left-0' : 'right-0'}`}
-        style={{
-            background: `linear-gradient(to ${side === 'left' ? 'right' : 'left'}, rgba(3,0,20,0.85), transparent)`,
-        }}
+        className={`absolute top-0 bottom-0 z-10 w-12 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-200 [@media(pointer:coarse)]:hidden from-primary/90 to-transparent ${
+            side === 'left' ? 'left-0 bg-gradient-to-r' : 'right-0 bg-gradient-to-l'
+        }`}
     >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points={side === 'left' ? '15 18 9 12 15 6' : '9 18 15 12 9 6'} />
         </svg>
     </button>
 )
 
 // roomy = fixed-size slots; a hovered card grows inside its slot and the slots after it
-// slide aside with transforms (no layout work, so it stays smooth)
+// slide aside with transforms. The slide only runs on devices with a real mouse,
+// so touch screens never get stuck in a hovered state.
 const roomyClasses = [
     'pt-4 pb-16',
     '[&>*]:relative',
@@ -28,8 +28,14 @@ const roomyClasses = [
     '[&>*]:ease-out',
     '[&>*]:will-change-transform',
     '[&>*:hover]:z-20',
-    '[&>*:hover~*]:translate-x-[190px]',
+    '[&>*:has(:focus-visible)]:z-20',
+    '[@media(hover:hover)]:[&>*:hover~*]:translate-x-[190px]',
+    '[@media(hover:hover)]:[&>*:has(:focus-visible)~*]:translate-x-[190px]',
 ].join(' ')
+
+// native swipe + snap on touch screens
+const touchClasses =
+    '[@media(pointer:coarse)]:snap-x [@media(pointer:coarse)]:snap-proximity [@media(pointer:coarse)]:[&>*]:snap-start'
 
 const Carousel = ({ children, className = '', roomy = false }) => {
     const ref = useRef(null)
@@ -107,7 +113,7 @@ const Carousel = ({ children, className = '', roomy = false }) => {
                 onMouseLeave={endDrag}
                 onClickCapture={onClickCapture}
                 onDragStart={(e) => e.preventDefault()}
-                className={`flex items-start overflow-x-auto cursor-grab select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${spacing} ${className}`}
+                className={`flex items-start overflow-x-auto overscroll-x-contain cursor-grab select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${touchClasses} ${spacing} ${className}`}
             >
                 {children}
             </div>
