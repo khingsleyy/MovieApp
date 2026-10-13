@@ -10,21 +10,21 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Server is not configured' })
     }
 
-    const segments = Array.isArray(req.query.path) ? req.query.path : [req.query.path]
+    const { p, ...rest } = req.query
+    const path = (Array.isArray(p) ? p[0] : p) || ''
+    const first = path.split('/').filter(Boolean)[0]
 
-    if (!segments[0] || !ALLOWED.has(segments[0])) {
+    if (!first || !ALLOWED.has(first) || path.includes('..')) {
         return res.status(400).json({ error: 'Path not allowed' })
     }
 
     const params = new URLSearchParams()
-    for (const [key, value] of Object.entries(req.query)) {
-        if (key === 'path') continue
+    for (const [key, value] of Object.entries(rest)) {
         if (Array.isArray(value)) value.forEach((v) => params.append(key, v))
         else params.append(key, value)
     }
 
-    const path = segments.map(encodeURIComponent).join('/')
-    const url = `https://api.themoviedb.org/3/${path}?${params.toString()}`
+    const url = `https://api.themoviedb.org/3/${path.replace(/^\/+/, '')}?${params.toString()}`
 
     try {
         const upstream = await fetch(url, {
